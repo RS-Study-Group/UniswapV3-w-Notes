@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.5.0;
 
-import './FullMath.sol';
-import './SqrtPriceMath.sol';
+import "./FullMath.sol";
+import "./SqrtPriceMath.sol";
 
 /// @title Computes the result of a swap within ticks
 /// @notice Contains methods for computing the result of a swap within a single tick price range, i.e., a single tick.
@@ -18,50 +18,69 @@ library SwapMath {
     /// @return amountIn The amount to be swapped in, of either token0 or token1, based on the direction of the swap
     /// @return amountOut The amount to be received, of either token0 or token1, based on the direction of the swap
     /// @return feeAmount The amount of input that will be taken as a fee
+
+    /**
+     * this function is called from a while loop that continues to execute
+     *  until input/output have not breached the slippage limit (sqrtRatioTargetX96)
+     */
     function computeSwapStep(
         uint160 sqrtRatioCurrentX96,
         uint160 sqrtRatioTargetX96,
         uint128 liquidity,
         int256 amountRemaining,
         uint24 feePips
-    )
-        internal
-        pure
-        returns (
-            uint160 sqrtRatioNextX96,
-            uint256 amountIn,
-            uint256 amountOut,
-            uint256 feeAmount
-        )
-    {
+    ) internal pure returns (uint160 sqrtRatioNextX96, uint256 amountIn, uint256 amountOut, uint256 feeAmount) {
+        /**
+         * price = token1 / token0
+         * if price is decreased, token is token0
+         * if price is increased, token is token1
+         */
         bool zeroForOne = sqrtRatioCurrentX96 >= sqrtRatioTargetX96;
+
+        /**
+         * check if amount remaining after swap is positive or zero
+         * - if slippage limit (sqrtRatioTargetX96) is hit, but there is still input remaining; positive amountRemaining
+         * - if slippage limit exact to the input; amountRemaining is zero
+         */
         bool exactIn = amountRemaining >= 0;
 
         if (exactIn) {
+            // amountRemaining / fee
             uint256 amountRemainingLessFee = FullMath.mulDiv(uint256(amountRemaining), 1e6 - feePips, 1e6);
+
+            // amountIn = token 1 or 0 required to cover position
             amountIn = zeroForOne
+                /**
+                 * liquidity * (sqrt(upper) - sqrt(lower)) / (sqrt(upper) * sqrt(lower))
+                 * returns amount of token0 required to cover a position of size liquidity between the two passed prices
+                 */
                 ? SqrtPriceMath.getAmount0Delta(sqrtRatioTargetX96, sqrtRatioCurrentX96, liquidity, true)
+                /**
+                 * calculates liquidity * (sqrt(upper) - sqrt(lower))
+                 * returns amount of token1 required to cover a position of size liquidity between the two passed prices
+                 */
                 : SqrtPriceMath.getAmount1Delta(sqrtRatioCurrentX96, sqrtRatioTargetX96, liquidity, true);
-            if (amountRemainingLessFee >= amountIn) sqrtRatioNextX96 = sqrtRatioTargetX96;
-            else
+            if (amountRemainingLessFee >= amountIn) {
+                // set new sqrtRatio to the target of the first swap?
+                sqrtRatioNextX96 = sqrtRatioTargetX96;
+            } else {
+                // calculate new sqrtRatio for second swap with formula; liquidity / (liquidity / sqrtPX96 +- amount)
                 sqrtRatioNextX96 = SqrtPriceMath.getNextSqrtPriceFromInput(
-                    sqrtRatioCurrentX96,
-                    liquidity,
-                    amountRemainingLessFee,
-                    zeroForOne
+                    sqrtRatioCurrentX96, liquidity, amountRemainingLessFee, zeroForOne
                 );
+            }
         } else {
+            // reverse the above logic in terms of
             amountOut = zeroForOne
                 ? SqrtPriceMath.getAmount1Delta(sqrtRatioTargetX96, sqrtRatioCurrentX96, liquidity, false)
                 : SqrtPriceMath.getAmount0Delta(sqrtRatioCurrentX96, sqrtRatioTargetX96, liquidity, false);
-            if (uint256(-amountRemaining) >= amountOut) sqrtRatioNextX96 = sqrtRatioTargetX96;
-            else
+            if (uint256(-amountRemaining) >= amountOut) {
+                sqrtRatioNextX96 = sqrtRatioTargetX96;
+            } else {
                 sqrtRatioNextX96 = SqrtPriceMath.getNextSqrtPriceFromOutput(
-                    sqrtRatioCurrentX96,
-                    liquidity,
-                    uint256(-amountRemaining),
-                    zeroForOne
+                    sqrtRatioCurrentX96, liquidity, uint256(-amountRemaining), zeroForOne
                 );
+            }
         }
 
         bool max = sqrtRatioTargetX96 == sqrtRatioNextX96;
