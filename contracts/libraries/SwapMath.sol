@@ -61,16 +61,18 @@ library SwapMath {
                  */
                 : SqrtPriceMath.getAmount1Delta(sqrtRatioCurrentX96, sqrtRatioTargetX96, liquidity, true);
             if (amountRemainingLessFee >= amountIn) {
-                // set new sqrtRatio to the target of the first swap?
+                // if swap will continue to execute from the while loop, set the next price to the target
+                // OR
+                //
                 sqrtRatioNextX96 = sqrtRatioTargetX96;
             } else {
-                // calculate new sqrtRatio for second swap with formula; liquidity / (liquidity / sqrtPX96 +- amount)
+                // calculate new sqrtRatio for last swap with formula; liquidity / (liquidity / sqrtPX96 +- amount)
                 sqrtRatioNextX96 = SqrtPriceMath.getNextSqrtPriceFromInput(
                     sqrtRatioCurrentX96, liquidity, amountRemainingLessFee, zeroForOne
                 );
             }
         } else {
-            // reverse the above logic in terms of
+            // reverse the above logic in terms of the reversal of the tokens
             amountOut = zeroForOne
                 ? SqrtPriceMath.getAmount1Delta(sqrtRatioTargetX96, sqrtRatioCurrentX96, liquidity, false)
                 : SqrtPriceMath.getAmount0Delta(sqrtRatioCurrentX96, sqrtRatioTargetX96, liquidity, false);
