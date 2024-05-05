@@ -44,18 +44,25 @@ library SwapMath {
          */
         bool exactIn = amountRemaining >= 0;
 
+        // statement sets return values sqrtRatioNextX96, amountIn, amountOut
+        // This section of the if statement activates while amountRemaining is a positive number
+        // Amount is going in
         if (exactIn) {
-            // amountRemaining / fee
+            // amountRemaining * (1,000,000 - feePips) / 1,000,000
+            // 1e6 is fixed point math that sets a token limit of 1,000,000
+            // amountRemaining is cast to unint256 for the FullMath function
             uint256 amountRemainingLessFee = FullMath.mulDiv(uint256(amountRemaining), 1e6 - feePips, 1e6);
 
             // amountIn = token 1 or 0 required to cover position
             amountIn = zeroForOne
                 /**
+                 * if zeroForOne is true, calculate the amount0 delta between the two prices
                  * liquidity * (sqrt(upper) - sqrt(lower)) / (sqrt(upper) * sqrt(lower))
                  * returns amount of token0 required to cover a position of size liquidity between the two passed prices
                  */
                 ? SqrtPriceMath.getAmount0Delta(sqrtRatioTargetX96, sqrtRatioCurrentX96, liquidity, true)
                 /**
+                 * else, get the amount1 delta between the 2 prices
                  * calculates liquidity * (sqrt(upper) - sqrt(lower))
                  * returns amount of token1 required to cover a position of size liquidity between the two passed prices
                  */
@@ -71,6 +78,8 @@ library SwapMath {
                     sqrtRatioCurrentX96, liquidity, amountRemainingLessFee, zeroForOne
                 );
             }
+        // else activates when amountRemaing >= 0 is false
+        // Amount going out
         } else {
             // reverse the above logic in terms of the reversal of the tokens
             amountOut = zeroForOne
@@ -88,14 +97,14 @@ library SwapMath {
         bool max = sqrtRatioTargetX96 == sqrtRatioNextX96;
 
         // get the input/output amounts
-        if (zeroForOne) {
-            amountIn = max && exactIn
-                ? amountIn
-                : SqrtPriceMath.getAmount0Delta(sqrtRatioNextX96, sqrtRatioCurrentX96, liquidity, true);
+        if (zeroForOne) { 
+            amountIn = max && exactIn 
+                ? amountIn // true && true, then no amount adjustment
+                : SqrtPriceMath.getAmount0Delta(sqrtRatioNextX96, sqrtRatioCurrentX96, liquidity, true); // if false, adjust amountIn based on price delta, rounds up
             amountOut = max && !exactIn
-                ? amountOut
-                : SqrtPriceMath.getAmount1Delta(sqrtRatioNextX96, sqrtRatioCurrentX96, liquidity, false);
-        } else {
+                ? amountOut // if true, no amount adjustment
+                : SqrtPriceMath.getAmount1Delta(sqrtRatioNextX96, sqrtRatioCurrentX96, liquidity, false); // if false, adjust amountOut based on price delta, rounds down
+        } else { // same as above just for the other direction of the trade
             amountIn = max && exactIn
                 ? amountIn
                 : SqrtPriceMath.getAmount1Delta(sqrtRatioCurrentX96, sqrtRatioNextX96, liquidity, true);
